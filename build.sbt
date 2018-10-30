@@ -1,3 +1,5 @@
+enablePlugins(Antlr4Plugin)
+
 val version = "0.1"
 
 lazy val main = (project in file("main"))
@@ -5,8 +7,12 @@ lazy val main = (project in file("main"))
 		name := "Main",
 		scalaVersion := "2.12.6",
 		libraryDependencies += "org.typelevel" %% "cats-core" % "1.4.0",
+		antlr4GenVisitor := true,
 		commonSettings,
 	)
+
+Antlr4 / antlr4GenVisitor := true
+Antlr4 / antlr4GenListener := false
 
 lazy val commonSettings = Seq(
 	javacOptions ++= Seq(
@@ -32,6 +38,4 @@ lazy val commonSettings = Seq(
 	cancelable := true,
 	exportJars := true
 )
-
-enablePlugins(Antlr4Plugin)
 
