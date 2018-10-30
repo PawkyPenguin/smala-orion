@@ -33,3 +33,5 @@ lazy val commonSettings = Seq(
 	exportJars := true
 )
 
+enablePlugins(Antlr4Plugin)
+
