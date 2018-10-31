@@ -5,6 +5,8 @@ import ASTTypes._
 import scala.io.Source
 import scala.util.Random
 import java.io.PrintWriter
+import java.nio.file.{FileSystems, Files}
+import scala.collection.JavaConverters._
 
 final case class OrionException(msg: String) extends Exception(msg)
 
@@ -19,7 +21,6 @@ object MyRight {
 object Main {
   val ITERATIONS = 10
   val INPUT_SET_SIZE = 2
-  val checker = new SemanticChecker()
   val simulator = new Simulator()
   val flattener = new Flattener()
   val coverager = new CoverageVisitor()
@@ -29,22 +30,21 @@ object Main {
       fun(a)
     }
 
-    def print: String = flattener.visit(a)
+    def print: String = flattener.visit(a) + "\n"
   }
 
   def main(args: Array[String]): Unit = {
-    orion("test", INPUT_SET_SIZE, ITERATIONS)
+    val dir = FileSystems.getDefault.getPath("unittests/")
+    //Files.newDirectoryStream(dir, "*.txt").iterator().asScala.filter(Files.isRegularFile(_)).foreach { f =>
+    //  orion(f.getFileName.toString, INPUT_SET_SIZE, ITERATIONS)
+    //}
+    orion("test2.txt", INPUT_SET_SIZE, ITERATIONS)
   }
 
   def orion(filename: String, generatedInputAmount: Int, iterations: Int): Unit = {
-    def doSemanticCheck(ast: AST) =
-      try {
-        ast.map(checker.visit)
-      } catch {
-        case SemanticCheckerException(msg) =>
-          println("Unittest not valid. Bailing...")
-          throw new OrionException(msg)
-      }
+    def doSemanticCheck(ast: AST) = {
+        ast.map(new SemanticChecker().visit)
+    }
 
       def generateRandomValue(rand: Random, value: Expression) =
         value match {
@@ -80,26 +80,33 @@ object Main {
         (inputs,results, astWithCoverage)
       }
 
-      def reportBug(ast: AST, astWithCoverage: AST, modifiedAST: AST, filename: String) = {
-        new PrintWriter(filename) { try {write(
+      def reportBug(ast: AST, optimizedAst: AST, astWithCoverage: AST, modifiedAST: AST, filename: String) = {
+        val marker = "========================================================================================\n"
+        new PrintWriter("unittest/bugreports/" + filename) { try {write(
           "Bug report...\n" +
           "Original AST = " +
-          ast.print + "\n" +
+          ast.print + marker +
+          "Optimized ASt = " +
+          optimizedAst.print + marker +
           "Ast + Coverage = " + 
-          astWithCoverage.print + "\n" +
+          astWithCoverage.print + marker +
           "Modified AST = " +
-          modifiedAST.print + "\n"
+          modifiedAST.print
         )} finally {close} }
       }
 
       val rand = Random
       val randomPruneVisitor = new EMIModifier(rand)
-      val unittest = Source.fromFile(filename)
+      val filenameAndDir = "unittests/" + filename
+      val unittest = Source.fromFile(filenameAndDir)
       val ast = Compiler.compile(unittest.mkString)
+      println("Running Orion for File <" + filenameAndDir + ">")
       println("Original unittest = " + ast.print)
       doSemanticCheck(ast)
       println("Passed the semantic checks")
-      val (inputs, results, astWithCoverage) = runOnRandomInputs(ast, rand)
+      val optimizedAst = ast.map(new ConstantFolder().visit(_))
+      println("Optimization done. New AST = " + optimizedAst.print)
+      val (inputs, results, astWithCoverage) = runOnRandomInputs(optimizedAst, rand)
       println("Coverage info = " + astWithCoverage.print)
 
       var i = 0
@@ -109,10 +116,10 @@ object Main {
           val modifiedAST: AST = astWithCoverage.map(randomPruneVisitor.visit)
           val output: AnyVal = modifiedAST.map(simulator.simulate(input)).merge
           val inputStr = input.map{el => el._1 + "=" + el._2.merge}.mkString(", ")
-          println("Test " + i + ": " + inputStr + "\t->\t" + "(" + originalOutput + ", " + output + ") \t in file <" + filename + ">")
+          println("Test " + i + ": " + inputStr + "\t->\t" + "(" + originalOutput + ", " + output + ") \t in file <" + filenameAndDir + ">")
           if (output != originalOutput) {
             println("MISTMATCH, FILING BUGREPORT")
-            reportBug(ast, astWithCoverage, modifiedAST, filename + "_bugreport_" + System.currentTimeMillis() + ".txt")
+            reportBug(ast, optimizedAst, astWithCoverage, modifiedAST, filename + "_bugreport_" + System.currentTimeMillis() + ".txt")
           }
         }
         i += 1

@@ -53,7 +53,7 @@ object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
   override def visitBoolexpr(ctx: SimpleGrammarParser.BoolexprContext): Expression = {
     val exp1 = visit(ctx.boolexpr1).asInstanceOf[Expression]
     if (ctx.boolexpr2 != null) {
-      Condition(exp1, visit(ctx.boolexpr2).asInstanceOf[Expression], ctx.boolexprOp.getText)
+      BinOp(exp1, visit(ctx.boolexpr2).asInstanceOf[Expression], ctx.boolexprOp.getText)
     } else {
       exp1
     }
@@ -69,13 +69,17 @@ object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
   }
 
   override def visitIfExpr(ctx: SimpleGrammarParser.IfExprContext): Expression = {
-    Branch(visit(ctx.ifCond).asInstanceOf[Condition], visit(ctx.ifBody).asInstanceOf[Body], visit(ctx.elseBody).asInstanceOf[Body])
+    if (ctx.elseBody != null) {
+      Branch(visit(ctx.ifCond).asInstanceOf[Expression], visit(ctx.ifBody).asInstanceOf[Body], visit(ctx.elseBody).asInstanceOf[Body])
+    } else {
+      Branch(visit(ctx.ifCond).asInstanceOf[Expression], visit(ctx.ifBody).asInstanceOf[Body], Body(Seq.empty))
+    }
   }
 
   override def visitMathexpr(ctx: SimpleGrammarParser.MathexprContext): Expression = {
     val exp1 = visit(ctx.mathexpr1).asInstanceOf[Expression]
     if (ctx.mathexpr2 != null) {
-      BinOp(exp1, visit(ctx.mathexpr2).asInstanceOf[Expression], ctx.mathexprOp.getText()(0))
+      BinOp(exp1, visit(ctx.mathexpr2).asInstanceOf[Expression], ctx.mathexprOp.getText())
     } else {
       exp1
     }
@@ -84,7 +88,7 @@ object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
   override def visitTerm(ctx: SimpleGrammarParser.TermContext): Expression = {
     val exp1 = visit(ctx.term1).asInstanceOf[Expression]
     if (ctx.term2 != null) {
-      BinOp(exp1, visit(ctx.term2).asInstanceOf[Expression], ctx.termOp.getText()(0))
+      BinOp(exp1, visit(ctx.term2).asInstanceOf[Expression], ctx.termOp.getText())
     } else {
       exp1
     }
@@ -123,7 +127,7 @@ package ASTTypes {
     def children = List(body)
   }
 
-  final case class BinOp(left: Expression, right: Expression, opSym: Char) extends Expression {
+  final case class BinOp(left: Expression, right: Expression, opSym: String) extends Expression {
     def cloneAST = copy()
     def children = List(left, right)
   }
@@ -143,14 +147,9 @@ package ASTTypes {
     def children = List(expr)
   }
 
-  final case class Branch(cond: Condition, body: Expression, elseBranch: Expression) extends Expression {
+  final case class Branch(cond: Expression, body: Expression, elseBranch: Expression) extends Expression {
     def cloneAST = copy()
     def children = List(cond, body, elseBranch)
-  }
-
-  final case class Condition(left: Expression, right: Expression, opSym: String) extends Expression {
-    def cloneAST = copy()
-    def children = List(left, right)
   }
 
   final case class Prog(args: Seq[ValAssignment], body: Expression) extends AST {

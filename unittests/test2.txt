@@ -1,0 +1,33 @@
+def main(a = 40, b = 0, c = false) {
+  var output = 0 + 2
+  if (a + b > 200) {
+    output = output + b
+    output = output * a
+  } else {
+    val someValue = a > b
+    if (someValue) {
+      output = 200
+    }
+  }
+  val asdf = false
+  output = a + b
+  output = output + (86 + 3)
+  val tester = (false && true) || (false || false)
+  if (tester) {
+    output = output - (38 * 379)
+  }
+  if (asdf) {
+    val e = (a * b) + (100 / 20)
+    val f = a + e
+    var k = f * e
+    k = f
+    output = k * 120
+  }
+  if (output < 100) {
+    output = output * 2
+  } else {
+    output = output - 12987
+    val gy = output * (a + b)
+  }
+  output
+}

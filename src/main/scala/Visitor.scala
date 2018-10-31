@@ -20,9 +20,117 @@ sealed trait Visitor[From, To] {
   }
 }
 
-sealed class Optimizer extends Visitor[AST, AST] {
+sealed class ConstantFolder extends Visitor[AST, AST] {
+  type Value = Either[BoolValue, IntValue]
+
+  var constantValues: Map[String, Value] = Map()
+
   override def visit(a: AST): AST = {
-    ???
+    def evalBool(l: BoolValue, r: BoolValue, opSym: String): BoolValue = {
+      opSym match {
+        case "||" => BoolValue(l.el || r.el)
+        case "&&" => BoolValue(l.el && r.el)
+      }
+    }
+
+    def evalInt(l: IntValue, r: IntValue, opSym: String) = {
+      opSym match {
+        case "+" => IntValue(l.el + r.el)
+        case "-" => IntValue(l.el - r.el)
+        case "*" => IntValue(l.el * r.el)
+        case "/" => IntValue(l.el / r.el)
+        case ">" =>  BoolValue(l.el >  r.el)
+        case "<" =>  BoolValue(l.el <  r.el)
+        case "<=" => BoolValue(l.el <= r.el)
+        case ">=" => BoolValue(l.el >= r.el)
+        case "==" => BoolValue(l.el == r.el)
+      }
+    }
+
+    a match {
+      case e @ Prog(args, bodypart) => Prog(args, visit(bodypart).asInstanceOf[Expression])
+      case e: Body => Body(e.children.map(visit).asInstanceOf[Seq[Expression]])
+      case Assignment(name, expr) => {
+        val visitedExpr = visit(expr)
+        visitedExpr match {
+          case e: IntValue => {constantValues(name) = Right(e); return Assignment(name, e)}
+          case e: BoolValue => {constantValues(name) = Left(e); return Assignment(name, e)}
+          case e: Expression => {
+            // The right-hand side of the assignment is not a constant
+
+            // Remove the variable from our constants (if it was in there) since we can't constant fold it anymore.
+            constantValues -= name;
+            Assignment(name, visitedExpr.asInstanceOf[Expression])
+          }
+          case _ => throw new IllegalStateException("Tried to visit expression but got something else")
+        }
+      }
+      case ValAssignment(name, expr) => {
+        val visitedExpr = visit(expr)
+        visitedExpr match {
+          case e: IntValue => {constantValues(name) = Right(e); return ValAssignment(name, e)}
+          case e: BoolValue => {constantValues(name) = Left(e); return ValAssignment(name, e)}
+          case e: Expression => ValAssignment(name, visitedExpr.asInstanceOf[Expression])
+          case _ => throw new IllegalStateException("Tried to visit expression but got something else")
+        }
+      }
+      case VarAssignment(name, expr) => {
+        val visitedExpr = visit(expr)
+        visitedExpr match {
+          case e: IntValue => {constantValues(name) = Right(e); VarAssignment(name, e)}
+          case e: BoolValue => {constantValues(name) = Left(e); VarAssignment(name, e)}
+          case e: Expression => {
+            // The right-hand side of the assignment is not a constant
+
+            // Remove the variable from our constants (if it was in there) since we can't constant fold it anymore.
+            constantValues -= name;
+            VarAssignment(name, visitedExpr.asInstanceOf[Expression])
+          }
+          case _ => throw new IllegalStateException("Tried to visit expression but got something else")
+        }
+      }
+      case BinOp(left, right, op) => {
+        val leftVisit = visit(left)
+        val rightVisit = visit(right)
+        leftVisit match {
+          case l: IntValue => rightVisit match {
+            case r: IntValue => return evalInt(l, r, op)
+            case any => any
+          }
+          case l: BoolValue => rightVisit match {
+            case r: BoolValue => return evalBool(l, r, op)
+            case any => any
+          }
+          case any => any
+        }
+        BinOp(leftVisit.asInstanceOf[Expression], rightVisit.asInstanceOf[Expression], op)
+      }
+      case Branch(cond, body, elsebody) => {
+        val condVisit = visit(cond)
+        val bodyVisit = visit(body)
+        val constantsInIfBlock = constantValues.clone
+        val elseVisit = visit(elsebody)
+        val constantsInElseBlock = constantValues.clone
+        constantValues = Map()
+        for ((k, v) <- constantsInIfBlock) {
+          if (constantsInElseBlock.contains(k) && constantsInElseBlock(k) == v) {
+            constantValues(k) = v
+          }
+        }
+
+        Branch(condVisit.asInstanceOf[Expression], bodyVisit.asInstanceOf[Expression], elseVisit.asInstanceOf[Expression])
+      }
+      case x: BoolValue => x.cloneAST
+      case x: IntValue => x.cloneAST
+      case x: Deref => {
+        if (constantValues contains x.name) {
+          constantValues(x.name).merge
+        } else {
+          x
+        }
+      }
+      case x: Coverage => throw new IllegalArgumentException("Optimizers shouldn't be called with coverage information")
+    }
   }
 }
 
@@ -50,8 +158,7 @@ sealed class EMIModifier(rand: scala.util.Random) extends Visitor[AST, AST] {
       case ValAssignment(name, expr) => ValAssignment(name, visit(expr).asInstanceOf[Expression])
       case VarAssignment(name, expr) => VarAssignment(name, visit(expr).asInstanceOf[Expression])
       case BinOp(left, right, op) => BinOp(visit(left).asInstanceOf[Expression], visit(right).asInstanceOf[Expression], op)
-      case Condition(left, right, op) => Condition(visit(left).asInstanceOf[Expression], visit(right).asInstanceOf[Expression], op)
-      case Branch(cond, body, elsebody) => Branch(visit(cond).asInstanceOf[Condition], visit(body).asInstanceOf[Expression], visit(elsebody).asInstanceOf[Expression])
+      case Branch(cond, body, elsebody) => Branch(visit(cond).asInstanceOf[Expression], visit(body).asInstanceOf[Expression], visit(elsebody).asInstanceOf[Expression])
       case x => x.cloneAST
     }
   }
@@ -66,8 +173,7 @@ sealed class CoverageVisitor extends Visitor[AST, AST] {
       case ValAssignment(name, expr) => ValAssignment(name, visit(expr).asInstanceOf[Expression])
       case VarAssignment(name, expr) => VarAssignment(name, visit(expr).asInstanceOf[Expression])
       case BinOp(left, right, op) => BinOp(visit(left).asInstanceOf[Expression], visit(right).asInstanceOf[Expression], op)
-      case Condition(left, right, op) => Condition(visit(left).asInstanceOf[Expression], visit(right).asInstanceOf[Expression], op)
-      case Branch(cond, body, elsebody) => Branch(visit(cond).asInstanceOf[Condition], visit(body).asInstanceOf[Expression], visit(elsebody).asInstanceOf[Expression])
+      case Branch(cond, body, elsebody) => Branch(visit(cond).asInstanceOf[Expression], visit(body).asInstanceOf[Expression], visit(elsebody).asInstanceOf[Expression])
       case x => x.cloneAST
     }
   }
@@ -121,19 +227,20 @@ sealed class SemanticChecker extends Visitor[AST, String] {
           valueTypes(e.variableName) = visit(e.expr)
           exprType
         }
-      case e: BinOp =>
-        if (visit(e.left) != "Int" || visit(e.right) != "Int") {
-          throw new SemanticCheckerException("Expressions on both side of BinOp must be Int")
-        } else {
-          "Int"
-        }
-      case e: Condition =>
-        if (visit(e.left) != "Int" || visit(e.right) != "Int") {
-          println("left " + visit(e.left) + " right " + visit(e.right))
-          throw new SemanticCheckerException("Expressions on both side of Condition must be Int")
-        } else {
+      case e: BinOp => {
+        val left = visit(e.left)
+        val right = visit(e.right)
+        val opSym = e.opSym
+        if ((opSym == "&&" || opSym == "||") && (left == "Boolean" && right == "Boolean")) {
           "Boolean"
+        } else if ((opSym == "<" || opSym == ">" || opSym == ">=" || opSym == "<=" || opSym == "==") && (left == "Int" && right == "Int")) {
+          "Boolean"
+        } else if ((opSym == "*" || opSym == "/" || opSym == "+" || opSym == "-") && (left == "Int" && right == "Int")) {
+          "Int"
+        } else {
+          throw new SemanticCheckerException("Operator is '" + opSym + "'. Left expression has type " + left + " but right expression has type " + right)
         }
+      }
       case e: Body => visit(e.children, "Object")
       case e: Branch =>
         if (visit(e.cond) != "Boolean") {
@@ -212,8 +319,7 @@ sealed class Simulator extends Visitor[AST, Either[Boolean, Int]] {
         valMap(e.variableName) = expr
         expr
       }
-      case e: BinOp => Right(binOp(visit(e.left).right.get, visit(e.right).right.get, e.opSym))
-      case e: Condition => Left(condOp(visit(e.left).right.get, visit(e.right).right.get, e.opSym))
+      case e: BinOp => binOp(visit(e.left), visit(e.right), e.opSym)
       case e: Body => visit(e.children, Left(false): Either[Boolean, Int])
       case e: Branch =>
         if (visit(e.cond).left.get) {
@@ -224,12 +330,19 @@ sealed class Simulator extends Visitor[AST, Either[Boolean, Int]] {
     }
   }
 
-  def binOp(e1: Int, e2: Int, opSym: Char) = {
+  def binOp(e1: Value, e2: Value, opSym: String) = {
     opSym match {
-      case '+' => e1 + e2
-      case '-' => e1 - e2
-      case '*' => e1 * e2
-      case '/' => e1 / 2
+      case "+" => Right(e1.right.get + e2.right.get)
+      case "-" => Right(e1.right.get - e2.right.get)
+      case "*" => Right(e1.right.get * e2.right.get)
+      case "/" => Right(e1.right.get / e2.right.get)
+      case ">" =>  Left(e1.right.get > e2.right.get)
+      case "<" =>  Left(e1.right.get < e2.right.get)
+      case "<=" => Left(e1.right.get <= e2.right.get)
+      case ">=" => Left(e1.right.get >= e2.right.get)
+      case "==" => Left(e1.right.get == e2.right.get)
+      case "||" => Left(e1.left.get || e2.left.get)
+      case "&&" => Left(e1.left.get && e2.left.get)
     }
   }
 
@@ -247,7 +360,7 @@ sealed class Simulator extends Visitor[AST, Either[Boolean, Int]] {
 sealed class Flattener extends Visitor[AST, String] {
   var indent = 0
 
-  def getIndent = "\t" * indent
+  def getIndent = "  " * indent
 
   override def visit(a: AST): String = {
     a match {
@@ -259,7 +372,6 @@ sealed class Flattener extends Visitor[AST, String] {
       case e: ValAssignment => "val " + e.variableName + " = " + visit(e.expr)
       case e: VarAssignment => "var " + e.variableName + " = " + visit(e.expr)
       case e: BinOp => "(" + visit(e.left) + " " + e.opSym + " " + visit(e.right) + ")"
-      case e: Condition => visit(e.left) + " " + e.opSym + " " + visit(e.right)
       case e: Body => {
         indent += 1
         val body: Seq[String] = e.children.map {el =>

@@ -25,7 +25,7 @@ line
 
 expression
 	: boolexpr1=mathexpr (boolexprOp=BOOLOP boolexpr2=mathexpr)? # boolexpr
-	| 'if' '(' ifCond=expression ')' ifBody=body 'else' elseBody=body # ifExpr
+	| 'if' '(' ifCond=expression ')' ifBody=body ('else' elseBody=body)? # ifExpr
 	;
 
 mathexpr
@@ -44,11 +44,11 @@ factor
 	;
 
 GROUPOP
-	: [+-]
+	: ('+'|'-'|'||')
 	;
 
 RINGOP
-	: [/*]
+	: ('/'|'*'|'&&')
 	;
 
 BOOLOP
@@ -78,4 +78,8 @@ EOL
 
 WS
 	: (' ' | '\t' | '\f')+ -> skip
+	;
+
+COMMENT
+	: ('//' ~ [\n\r]*) -> skip
 	;
