@@ -1,13 +1,16 @@
 import scala.io.Source
 import scala.collection.JavaConversions._
+import ASTTypes._
+import Visitors._
 
 object Compiler {
   //val optimizer: Optimizer = ???
 
-  def compile(filename: String, withCoverageProfiling: Boolean): Unit = {
+  def compile(filename: String, withCoverageProfiling: Boolean): AST = {
     val file = Source.fromFile(filename)
-    val ast = MyVisitor.buildAST(file.getLines().toString)
+    val ast = MyVisitor.buildAST(file.mkString.trim)
     file.close
+    ast
   }
 
 }
@@ -26,129 +29,134 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
   }
 
   override def visitEval(ctx: EvalContext): AST = {
-    //super.visit(ctx)
-    ???
+    visit(ctx.children(0))
   }
 
   override def visitProg(ctx: ProgContext): AST = {
-    print(ctx.children)
-    val a = ctx.children
-    ???
+    visit(ctx.body)
   }
 
   override def visitBody(ctx: SimpleGrammarParser.BodyContext): Body = {
-    //Body(ctx.children.map(visit))
-    ???
+    Body(ctx.line.toList.map {e => visit(e).asInstanceOf[Expression]})
   }
 
   override def visitAssignment(ctx: SimpleGrammarParser.AssignmentContext): Assignment = {
-    ???
+    Assignment(ctx.ident.getText, visit(ctx.expression).asInstanceOf[Expression])
   }
 
   override def visitExpressionLine(ctx: SimpleGrammarParser.ExpressionLineContext): Expression = {
-    ???
+    visit(ctx.expression).asInstanceOf[Expression]
   }
 
-  override def visitBoolexpr(ctx: SimpleGrammarParser.BoolexprContext): AST = {
-    ???
+  override def visitBoolexpr(ctx: SimpleGrammarParser.BoolexprContext): Expression = {
+    val exp1 = visit(ctx.boolexpr1).asInstanceOf[Expression]
+    if (ctx.boolexpr2 != null) {
+      Condition(exp1, visit(ctx.boolexpr2).asInstanceOf[Expression], ctx.boolexprOp.getText)
+    } else {
+      exp1
+    }
   }
 
-  override def visitIfExpr(ctx: SimpleGrammarParser.IfExprContext): AST = {
-    ???
+  override def visitIfExpr(ctx: SimpleGrammarParser.IfExprContext): Expression = {
+    Branch(visit(ctx.ifCond).asInstanceOf[Condition], visit(ctx.ifBody).asInstanceOf[Body], visit(ctx.elseBody).asInstanceOf[Body])
   }
 
   override def visitMathexpr(ctx: SimpleGrammarParser.MathexprContext): Expression = {
-    ???
+    val exp1 = visit(ctx.mathexpr1).asInstanceOf[Expression]
+    if (ctx.mathexpr2 != null) {
+      BinOp(exp1, visit(ctx.mathexpr2).asInstanceOf[Expression], ctx.mathexprOp.getText()(0))
+    } else {
+      exp1
+    }
   }
 
   override def visitTerm(ctx: SimpleGrammarParser.TermContext): Expression = {
-    ???
-  }
-
-  override def visitFactor(ctx: SimpleGrammarParser.FactorContext): Expression = {
-    ???
+    val exp1 = visit(ctx.term1).asInstanceOf[Expression]
+    if (ctx.term2 != null) {
+      BinOp(exp1, visit(ctx.term2).asInstanceOf[Expression], ctx.termOp.getText()(0))
+    } else {
+      exp1
+    }
   }
 
   override def visitNumberNs(ctx: SimpleGrammarParser.NumberNsContext): IntValue = {
-    ???
+    IntValue(ctx.getText().toInt)
   }
 
   override def visitBooleanNs(ctx: SimpleGrammarParser.BooleanNsContext): BoolValue = {
-    ???
+    BoolValue(ctx.getText().toBoolean)
   }
 
   override def visitBracketNs(ctx: SimpleGrammarParser.BracketNsContext): Expression = {
-    ???
+    visit(ctx.expression).asInstanceOf[Expression]
   }
 
   override def visitValue(ctx: SimpleGrammarParser.ValueContext): Variable = {
-    ???
+    Variable(ctx.children(0).getText)
   }
 }
 
-sealed trait AST {
-  def children: Seq[AST]
-  def visit[T](v: Visitor[T]): T = {
-    v.visitThis(this)
-  }
-}
-
-trait Ops
-object Plus extends Ops
-object Minus extends Ops
-object Mult extends Ops
-object Div extends Ops
-
-object Empty extends Expression {
-  def children = Seq.empty
-}
-
-final case class BinOp(left: Expression, right: Expression, op: Ops) extends Expression {
-
-  def children = List(left, right)
-}
-
-object BinOp {
-  def apply(left: Expression, right: Expression, opSym: Char): BinOp = {
-    val op = opSym match {
-      case '+' => Plus
-      case '-' => Minus
-      case '*' => Mult
-      case '/' => Div
-      case _ => throw new IllegalArgumentException
+package ASTTypes {
+  sealed trait CoverageAST {
+    def visit[T](v: Visitor[CoverageAST, T]): T = {
+      v.visit(this)
     }
-    BinOp(left, right, op)
   }
-}
 
-final case class Assignment(variable: Variable, expr: Expression) extends Expression {
-  def children = List(variable, expr)
-}
+  final case class CoveragedBody(children: Seq[CoverageAST]) extends CoverageAST {
+    var covered = false
+  }
 
-final case class Branch(cond: Condition, body: Body, elseBranch: Body) extends Expression {
-  def children = List(cond, body, elseBranch)
-}
+  sealed trait AST extends CoverageAST {
+    def cloneAST: AST
+    def children: Seq[AST]
+  }
 
-final case class Condition(cond: Expression) extends Expression {
-  def children = List(cond)
-}
+  final case class Empty() extends Expression {
+    def cloneAST = copy()
+    def children = Seq.empty
+  }
 
-final case class Body(children: Seq[Expression]) extends Expression {
-}
+  final case class BinOp(left: Expression, right: Expression, opSym: Char) extends Expression {
+    def cloneAST = copy()
+    def children = List(left, right)
+  }
 
-sealed trait Value[T] extends Expression {
-  def children = Seq.empty
-}
+  final case class Assignment(variableName: String, expr: Expression) extends Expression {
+    def cloneAST = copy()
+    def children = List(expr)
+  }
 
-final case class BoolValue(el: Boolean) extends Value[Boolean] {
-}
+  final case class Branch(cond: Condition, body: Body, elseBranch: Body) extends Expression {
+    def cloneAST = copy()
+    def children = List(cond, body, elseBranch)
+  }
 
-final case class IntValue(el: Int) extends Value[Int] {
-}
+  final case class Condition(left: Expression, right: Expression, opSym: String) extends Expression {
+    def cloneAST = copy()
+    def children = List(left, right)
+  }
 
-final case class Variable(name: String) extends Expression {
-  def children = Seq.empty
-}
+  final case class Body(children: Seq[Expression]) extends Expression {
+    def cloneAST = copy()
+  }
 
-sealed trait Expression extends AST {
+  sealed trait Value[T] extends Expression {
+    def children = Seq.empty
+  }
+
+  final case class BoolValue(el: Boolean) extends Value[Boolean] {
+    def cloneAST = copy()
+  }
+
+  final case class IntValue(el: Int) extends Value[Int] {
+    def cloneAST = copy()
+  }
+
+  final case class Variable(name: String) extends Expression {
+    def cloneAST = copy()
+    def children = Seq.empty
+  }
+
+  sealed trait Expression extends AST
 }

@@ -1,40 +1,36 @@
 grammar SimpleGrammar;
 
 eval
-	: prog
+	: prog EOF
 	;
 
 prog
-	: 'def' IDENTIFIER '()' '{' body '}'
+	: 'def ' IDENTIFIER '()' body
 	;
 
 body
-	: line*
+	: '{' EOL? (line EOL)* EOL? '}'
 	;
 
 line
-	: 'val' IDENTIFIER '=' expression # assignment
+	: 'val' ident=IDENTIFIER '=' expression # assignment
 	| expression # expressionLine
 	;
 
 expression
-	: mathexpr (BOOLOP mathexpr)? # boolexpr
-	| 'if' '(' expression ')' '{' body '}' 'else' '{' body '}' # ifExpr
+	: boolexpr1=mathexpr (boolexprOp=BOOLOP boolexpr2=mathexpr)? # boolexpr
+	| 'if' '(' ifCond=expression ')' ifBody=body 'else' elseBody=body # ifExpr
 	;
 
 mathexpr
-	: term (GROUPOP term)?
+	: mathexpr1=term (mathexprOp=GROUPOP mathexpr2=term)?
 	;
 
 term
-	: factor (RINGOP factor)*
+	: term1=factor (termOp=RINGOP term2=factor)*
 	;
 
 factor
-	: ('-')? nsFact
-	;
-
-nsFact
 	: NUMBER # numberNs
 	| BOOLEAN # booleanNs
 	| IDENTIFIER # value
@@ -67,7 +63,7 @@ VAL
 	;
 
 IDENTIFIER
-	: [a-zA-Z] [a-zA-Z0-9_]*
+	: [a-zA-Z]+
 	;
 
 EOL
@@ -75,5 +71,5 @@ EOL
 	;
 
 WS
-	: [ \t\r\n] -> skip
+	: (' ' | '\t' | '\f')+ -> skip
 	;

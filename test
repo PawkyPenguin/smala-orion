@@ -1,2 +1,10 @@
-def test() {
+def main() {
+	val a = 30
+        if (a > 40) {
+          val b = a * 10
+          10 + b
+        } else {
+          val c = a * 20
+          100 + c
+        }
 }
