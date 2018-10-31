@@ -1,21 +1,15 @@
-import scala.io.Source
 import scala.collection.JavaConversions._
 import ASTTypes._
 import Visitors._
 
 object Compiler {
   //val optimizer: Optimizer = ???
-
-  def compile(filename: String, withCoverageProfiling: Boolean): AST = {
-    val file = Source.fromFile(filename)
-    val ast = MyVisitor.buildAST(file.mkString.trim)
-    file.close
-    ast
+  def compile(fromString: String): AST = {
+    ScalaliParser.buildAST(fromString.trim)
   }
-
 }
 
-object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
+object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
   import org.antlr.v4.runtime._;
   import SimpleGrammarParser._
 
@@ -25,7 +19,7 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
     val tokens = new CommonTokenStream(lexer)
     val parser = new SimpleGrammarParser(tokens)
     val tree = parser.eval()
-    MyVisitor.visit(tree)
+    ScalaliParser.visit(tree)
   }
 
   override def visitEval(ctx: EvalContext): AST = {
@@ -33,7 +27,7 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
   }
 
   override def visitProg(ctx: ProgContext): AST = {
-    visit(ctx.body)
+    Prog(ctx.argument.map(visit).asInstanceOf[Seq[ValAssignment]], visit(ctx.body).asInstanceOf[Body])
   }
 
   override def visitBody(ctx: SimpleGrammarParser.BodyContext): Body = {
@@ -42,6 +36,14 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
 
   override def visitAssignment(ctx: SimpleGrammarParser.AssignmentContext): Assignment = {
     Assignment(ctx.ident.getText, visit(ctx.expression).asInstanceOf[Expression])
+  }
+
+  override def visitVarAssignment(ctx: SimpleGrammarParser.VarAssignmentContext): VarAssignment = {
+    VarAssignment(ctx.ident.getText, visit(ctx.expression).asInstanceOf[Expression])
+  }
+
+  override def visitValAssignment(ctx: SimpleGrammarParser.ValAssignmentContext): ValAssignment = {
+    ValAssignment(ctx.ident.getText, visit(ctx.expression).asInstanceOf[Expression])
   }
 
   override def visitExpressionLine(ctx: SimpleGrammarParser.ExpressionLineContext): Expression = {
@@ -55,6 +57,15 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
     } else {
       exp1
     }
+  }
+
+  override def visitArgument(ctx: SimpleGrammarParser.ArgumentContext): ValAssignment = {
+    val value = if (ctx.case1 != null) {
+      IntValue(ctx.case1.getText.toInt)
+    } else {
+      BoolValue(ctx.case2.getText.toBoolean)
+    }
+    ValAssignment(ctx.name.getText, value)
   }
 
   override def visitIfExpr(ctx: SimpleGrammarParser.IfExprContext): Expression = {
@@ -91,30 +102,25 @@ object MyVisitor extends SimpleGrammarBaseVisitor[AST] {
     visit(ctx.expression).asInstanceOf[Expression]
   }
 
-  override def visitValue(ctx: SimpleGrammarParser.ValueContext): Variable = {
-    Variable(ctx.children(0).getText)
+  override def visitVariable(ctx: SimpleGrammarParser.VariableContext): Deref = {
+    Deref(ctx.children(0).getText)
   }
 }
 
 package ASTTypes {
-  sealed trait CoverageAST {
-    def visit[T](v: Visitor[CoverageAST, T]): T = {
+  sealed trait AST {
+    def cloneAST: AST
+    def children: Seq[AST]
+
+    def visit[T](v: Visitor[AST, T]): T = {
       v.visit(this)
     }
   }
 
-  final case class CoveragedBody(children: Seq[CoverageAST]) extends CoverageAST {
+  final case class Coverage(body: Body) extends Expression {
     var covered = false
-  }
-
-  sealed trait AST extends CoverageAST {
-    def cloneAST: AST
-    def children: Seq[AST]
-  }
-
-  final case class Empty() extends Expression {
     def cloneAST = copy()
-    def children = Seq.empty
+    def children = List(body)
   }
 
   final case class BinOp(left: Expression, right: Expression, opSym: Char) extends Expression {
@@ -127,7 +133,17 @@ package ASTTypes {
     def children = List(expr)
   }
 
-  final case class Branch(cond: Condition, body: Body, elseBranch: Body) extends Expression {
+  final case class ValAssignment(variableName: String, expr: Expression) extends Expression {
+    def cloneAST = copy()
+    def children = List(expr)
+  }
+
+  final case class VarAssignment(variableName: String, expr: Expression) extends Expression {
+    def cloneAST = copy()
+    def children = List(expr)
+  }
+
+  final case class Branch(cond: Condition, body: Expression, elseBranch: Expression) extends Expression {
     def cloneAST = copy()
     def children = List(cond, body, elseBranch)
   }
@@ -137,7 +153,12 @@ package ASTTypes {
     def children = List(left, right)
   }
 
-  final case class Body(children: Seq[Expression]) extends Expression {
+  final case class Prog(args: Seq[ValAssignment], body: Expression) extends AST {
+    def cloneAST = copy()
+    def children = args :+ body
+  }
+
+  sealed case class Body(children: Seq[Expression]) extends Expression {
     def cloneAST = copy()
   }
 
@@ -153,7 +174,7 @@ package ASTTypes {
     def cloneAST = copy()
   }
 
-  final case class Variable(name: String) extends Expression {
+  final case class Deref(name: String) extends Expression {
     def cloneAST = copy()
     def children = Seq.empty
   }

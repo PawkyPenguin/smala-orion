@@ -1,5 +1,7 @@
 enablePlugins(Antlr4Plugin)
 
+Global / cancelable := true
+
 val version = "0.1"
 
 lazy val main = (project in file("main"))

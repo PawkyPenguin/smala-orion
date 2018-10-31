@@ -1,8 +1,6 @@
-def main() {
-	val a = 30
+def main(a = 40, b = false) {
         if (a > 40) {
-          val b = a * 10
-          10 + b
+          22
         } else {
           val c = a * 20
           100 + c

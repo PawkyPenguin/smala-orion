@@ -5,7 +5,11 @@ eval
 	;
 
 prog
-	: 'def ' IDENTIFIER '()' body
+	: 'def ' IDENTIFIER '(' (argument (',' argument)*)? ')' body
+	;
+
+argument
+	: name=IDENTIFIER '=' (case1=NUMBER|case2=BOOLEAN)
 	;
 
 body
@@ -13,7 +17,9 @@ body
 	;
 
 line
-	: 'val' ident=IDENTIFIER '=' expression # assignment
+	: 'val' ident=IDENTIFIER '=' expression # valAssignment
+	| 'var' ident=IDENTIFIER '=' expression # varAssignment
+	| ident=IDENTIFIER '=' expression # assignment
 	| expression # expressionLine
 	;
 
@@ -33,7 +39,7 @@ term
 factor
 	: NUMBER # numberNs
 	| BOOLEAN # booleanNs
-	| IDENTIFIER # value
+	| IDENTIFIER # variable
 	| '(' expression ')' # bracketNs
 	;
 
