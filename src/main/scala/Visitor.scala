@@ -47,6 +47,16 @@ sealed class ConstantFolder extends Visitor[AST, AST] {
       }
     }
 
+    def intersectMaps[S, T](map1: Map[S, T], map2: Map[S, T]) = {
+        val intersection: Map[S, T] = Map()
+        for ((k, v) <- map1) {
+          if (map2.contains(k) && map2(k) == v) {
+            intersection(k) = v
+          }
+        }
+        intersection
+    }
+
     a match {
       case e @ Prog(args, bodypart) => Prog(args, visit(bodypart).asInstanceOf[Expression])
       case e: Body => Body(e.children.map(visit).asInstanceOf[Seq[Expression]])
@@ -111,12 +121,7 @@ sealed class ConstantFolder extends Visitor[AST, AST] {
         val constantsInIfBlock = constantValues.clone
         val elseVisit = visit(elsebody)
         val constantsInElseBlock = constantValues.clone
-        constantValues = Map()
-        for ((k, v) <- constantsInIfBlock) {
-          if (constantsInElseBlock.contains(k) && constantsInElseBlock(k) == v) {
-            constantValues(k) = v
-          }
-        }
+        constantValues = intersectMaps(constantsInIfBlock, constantsInElseBlock)
 
         Branch(condVisit.asInstanceOf[Expression], bodyVisit.asInstanceOf[Expression], elseVisit.asInstanceOf[Expression])
       }
@@ -129,7 +134,7 @@ sealed class ConstantFolder extends Visitor[AST, AST] {
           x
         }
       }
-      case x: Coverage => throw new IllegalArgumentException("Optimizers shouldn't be called with coverage information")
+      case Coverage(body, covered) => Coverage(visit(body).asInstanceOf[Body], covered)
     }
   }
 }
@@ -138,19 +143,19 @@ sealed class EMIModifier(rand: scala.util.Random) extends Visitor[AST, AST] {
   override def visit(a: AST): AST = {
     a match {
       case e @ Prog(args, bodypart) => Prog(args, visit(bodypart).asInstanceOf[Expression])
-      case e @ Coverage(body) => {
+      case e @ Coverage(body, covered) => {
         if (!e.covered) {
           // decide whether we want to prune or not
           val nonPrunedExpressions: ListBuffer[Expression] = ListBuffer()
           val amountOfExpressions: Float = body.children.size
           for (expression <- body.children) {
-            if (rand.nextFloat > 1.0 / amountOfExpressions) {
+            if (rand.nextFloat > 1.0 / (amountOfExpressions + 1)) {
               nonPrunedExpressions += expression
             }
           }
-          Coverage(Body(nonPrunedExpressions))
+          Coverage(Body(nonPrunedExpressions.map(visit(_)).asInstanceOf[Seq[Expression]]), covered)
         } else {
-          Coverage(visit(body).asInstanceOf[Body])
+          Coverage(visit(body).asInstanceOf[Body], covered)
         }
       }
       case e: Body => Body(e.children.map(visit).asInstanceOf[Seq[Expression]])
@@ -254,7 +259,7 @@ sealed class SemanticChecker extends Visitor[AST, String] {
             "Object"
           }
         }
-      case Coverage(b) => visit(b)
+      case Coverage(b, covered) => visit(b)
     }
   }
 }
@@ -278,21 +283,16 @@ sealed class Simulator extends Visitor[AST, Either[Boolean, Int]] {
             case None => missingAssignments.append(assignment)
           }
         }
-        val newAST = Prog(missingAssignments, body)
         val result = visit(Prog(missingAssignments, body))
         result
       }
-      case a => visit(a)
+      case _ => throw new IllegalStateException("Can only simulate on the full Prog tree")
     }
   }
 
   override def visit(a: AST): Value = {
     a match {
-      case e: Prog => if (valMap.isEmpty) {
-        visit(e.children, Left(false): Either[Boolean, Int])
-      } else {
-        visit(e.body)
-      }
+      case e: Prog => visit(e.children, Left(false): Either[Boolean, Int])
       case e: Coverage => {
         e.covered = true
         visit(e.children, Left(false): Either[Boolean, Int])
@@ -388,7 +388,7 @@ sealed class Flattener extends Visitor[AST, String] {
         str + getIndent + "}"
       } else {
         indent += 1
-        val str = "{\n" + getIndent + "DEAD\n"
+        val str = "{\n" + getIndent + "DEAD\n" + getIndent + visit(e.body) + "\n"
         indent -= 1
         str + getIndent + "}"
       }

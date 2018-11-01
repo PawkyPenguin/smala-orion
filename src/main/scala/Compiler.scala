@@ -121,8 +121,7 @@ package ASTTypes {
     }
   }
 
-  final case class Coverage(body: Body) extends Expression {
-    var covered = false
+  final case class Coverage(body: Body, var covered: Boolean = false) extends Expression {
     def cloneAST = copy()
     def children = List(body)
   }
