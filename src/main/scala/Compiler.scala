@@ -2,14 +2,13 @@ import scala.collection.JavaConversions._
 import ASTTypes._
 import Visitors._
 
-object Compiler {
-  //val optimizer: Optimizer = ???
+object SmalaCompiler {
   def compile(fromString: String): AST = {
-    ScalaliParser.buildAST(fromString.trim)
+    SmalaParser.buildAST(fromString.trim)
   }
 }
 
-object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
+object SmalaParser extends SimpleGrammarBaseVisitor[AST] {
   import org.antlr.v4.runtime._;
   import SimpleGrammarParser._
 
@@ -19,7 +18,7 @@ object ScalaliParser extends SimpleGrammarBaseVisitor[AST] {
     val tokens = new CommonTokenStream(lexer)
     val parser = new SimpleGrammarParser(tokens)
     val tree = parser.eval()
-    ScalaliParser.visit(tree)
+    SmalaParser.visit(tree)
   }
 
   override def visitEval(ctx: EvalContext): AST = {

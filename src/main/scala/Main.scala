@@ -32,7 +32,7 @@ object Main {
     val rand = new Random()
     rand.setSeed(System.currentTimeMillis())
     for (i <- 1 to ITERATIONS) {
-      Files.newDirectoryStream(dir, "*.txt").iterator().asScala.filter(Files.isRegularFile(_)).foreach { f =>
+      Files.newDirectoryStream(dir, "*.smala").iterator().asScala.filter(Files.isRegularFile(_)).foreach { f =>
         orion(f.getFileName.toString, INPUT_SET_SIZE, GENERATED_TESTS, rand)
         println("DONE ITERATION " + i + " =============================================================================================")
       }
@@ -109,7 +109,7 @@ object Main {
     val randomPruneVisitor = new EMIModifier(rand)
     val filenameAndDir = "unittests/" + filename
     val unittest = Source.fromFile(filenameAndDir)
-    val ast = Compiler.compile(unittest.mkString)
+    val ast = SmalaCompiler.compile(unittest.mkString)
     println("Running Orion for File <" + filenameAndDir + ">")
     debug("Original unittest = " + ast.print)
 

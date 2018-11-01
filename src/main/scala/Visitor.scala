@@ -117,6 +117,7 @@ sealed class ConstantFolder extends Visitor[AST, AST] {
       }
       case Branch(cond, body, elsebody) => {
         val condVisit = visit(cond)
+        // FIXME: After the body visit, the constantValues have to be RESET for the elseBody visit
         val bodyVisit = visit(body)
         val constantsInIfBlock = constantValues.clone
         val elseVisit = visit(elsebody)
