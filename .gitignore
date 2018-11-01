@@ -1,3 +1,4 @@
 *.swp
 target/
 ./main/
+unittests/bugreports/
