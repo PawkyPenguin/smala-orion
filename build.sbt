@@ -1,5 +1,4 @@
 enablePlugins(Antlr4Plugin)
-
 Global / cancelable := true
 
 val version = "0.1"
@@ -12,6 +11,8 @@ lazy val main = (project in file("main"))
 		antlr4GenVisitor := true,
 		commonSettings,
 	)
+
+libraryDependencies += "com.jsuereth" %% "scala-arm" % "2.0"
 
 Antlr4 / antlr4GenVisitor := true
 Antlr4 / antlr4GenListener := false

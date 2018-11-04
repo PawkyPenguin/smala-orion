@@ -4,18 +4,18 @@ import scala.collection.mutable.ListBuffer
 import ASTTypes._
 import scala.io.Source
 import scala.util.Random
-import java.io.PrintWriter
-import java.nio.file.{FileSystems, Files, Paths, StandardOpenOption}
+import java.nio.file.{FileSystems, Files, Paths, Path, StandardOpenOption}
 import scala.collection.JavaConverters._
+import resource._
 
 object Main {
   val ITERATIONS = 200
   val INPUT_SET_SIZE = 2
-  val GENERATED_TESTS = 20
+  val GENERATED_TESTS = 10
+  val DEBUG = false
   val simulator = new Simulator()
   val flattener = new Flattener()
   val coverager = new CoverageVisitor()
-  val DEBUG = false
 
   implicit class MappableAST[To](a: AST) {
     def map(fun: AST => To) = {
@@ -28,11 +28,16 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    Files.createDirectories(Paths.get("unittests/bugreports"));
     val dir = FileSystems.getDefault.getPath("unittests/")
     val rand = new Random()
     rand.setSeed(System.currentTimeMillis())
-    for (i <- 1 to ITERATIONS) {
-      Files.newDirectoryStream(dir, "*.smala").iterator().asScala.filter(Files.isRegularFile(_)).foreach { f =>
+    for {
+      i <- 1 to ITERATIONS
+      unittests <- managed(Files.list(Paths.get("unittests/")).filter(Files.isRegularFile(_)).filter(path => path.toString.endsWith(".smala")))
+    }
+    {
+      unittests.iterator().asScala.foreach { f =>
         orion(f.getFileName.toString, INPUT_SET_SIZE, GENERATED_TESTS, rand)
         println("DONE ITERATION " + i + " =============================================================================================")
       }
