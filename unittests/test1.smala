@@ -1,8 +1,11 @@
 def main(a = 40, b = false) {
-        if (a > 40) {
-          22
-        } else {
-          val c = a * 20
-          100 + c
-        }
+  var output = 2 + 20
+  if (a > 40) {
+    output = output + 9
+  } else {
+    val c = a * 20
+    output = c
+  }
+  output
 }
+

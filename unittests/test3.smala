@@ -1,9 +1,0 @@
-def main(a = 40, b = 0, c = false) {
-  var output = 0 + 2
-  if (a + b > 150) {
-    output = output + b
-  } else {
-    output = 200
-  }
-  output
-}
